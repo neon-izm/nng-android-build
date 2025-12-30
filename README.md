@@ -49,7 +49,23 @@ nng.close();
 
 ## 📱 Sample App
 
-Test send/receive on a single device with the included sample app:
+The sample app can use the AAR from GitHub Release or build from source.
+
+### Using AAR from GitHub Release (Recommended)
+
+```bash
+# Setup: Download AAR from GitHub Release and configure sample-app
+./setup-sample-app.sh [version_tag]
+
+# Default: Downloads v1.11
+# Custom version: ./setup-sample-app.sh v1.10
+
+# Build and install
+./gradlew sample-app:assembleDebug
+adb install sample-app/build/outputs/apk/debug/sample-app-debug.apk
+```
+
+### Building from Source
 
 ```bash
 ./gradlew sample-app:installDebug
