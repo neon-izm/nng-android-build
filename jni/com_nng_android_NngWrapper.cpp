@@ -20,6 +20,9 @@
 #include <nng/protocol/pipeline0/push.h>
 #include <nng/protocol/pipeline0/pull.h>
 #include <nng/protocol/bus0/bus.h>
+// Survey protocol headers - check if available in NNG 1.10
+// #include <nng/protocol/survey0/survey.h>
+// #include <nng/protocol/survey0/respond.h>
 #include <android/log.h>
 #include <cstring>
 #include <cstdio>
@@ -362,5 +365,483 @@ JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngVersion
     snprintf(version, sizeof(version), "%d.%d.%d",
              NNG_MAJOR_VERSION, NNG_MINOR_VERSION, NNG_PATCH_VERSION);
     return env->NewStringUTF(version);
+}
+
+// ============================================================
+// Survey Protocol Operations
+// ============================================================
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngSurveyor0Open
+  (JNIEnv* env, jobject obj) {
+#ifdef NNG_HAVE_SURVEYOR0
+    nng_socket socket;
+    int rv = nng_surveyor0_open(&socket);
+    if (rv != 0) {
+        LOGE("nng_surveyor0_open failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    LOGI("nng_surveyor0_open successful, socket ID: %u", socket.id);
+    return (jlong)socket.id;
+#else
+    LOGE("Survey protocol not supported in this NNG version");
+    return -NNG_ENOTSUP;
+#endif
+}
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngRespondent0Open
+  (JNIEnv* env, jobject obj) {
+#ifdef NNG_HAVE_RESPONDENT0
+    nng_socket socket;
+    int rv = nng_respondent0_open(&socket);
+    if (rv != 0) {
+        LOGE("nng_respondent0_open failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    LOGI("nng_respondent0_open successful, socket ID: %u", socket.id);
+    return (jlong)socket.id;
+#else
+    LOGE("Survey protocol not supported in this NNG version");
+    return -NNG_ENOTSUP;
+#endif
+}
+
+// ============================================================
+// Asynchronous I/O Operations
+// ============================================================
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngAioAlloc
+  (JNIEnv* env, jobject obj) {
+    nng_aio* aio;
+    int rv = nng_aio_alloc(&aio, NULL, NULL);
+    if (rv != 0) {
+        LOGE("nng_aio_alloc failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    LOGI("nng_aio_alloc successful, aio: %p", aio);
+    return (jlong)(uintptr_t)aio;
+}
+
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngAioFree
+  (JNIEnv* env, jobject obj, jlong aio_ptr) {
+    nng_aio* aio = (nng_aio*)(uintptr_t)aio_ptr;
+    if (aio != NULL) {
+        nng_aio_free(aio);
+        LOGI("nng_aio_free completed");
+    }
+}
+
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngSocketSendAio
+  (JNIEnv* env, jobject obj, jlong socket_id, jlong aio_ptr) {
+    nng_socket socket = id_to_socket(socket_id);
+    nng_aio* aio = (nng_aio*)(uintptr_t)aio_ptr;
+    
+    if (aio == NULL) {
+        LOGE("Invalid AIO pointer");
+        return;
+    }
+    
+    nng_socket_send(socket, aio);
+    LOGI("nng_socket_send_aio initiated");
+}
+
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngSocketRecvAio
+  (JNIEnv* env, jobject obj, jlong socket_id, jlong aio_ptr) {
+    nng_socket socket = id_to_socket(socket_id);
+    nng_aio* aio = (nng_aio*)(uintptr_t)aio_ptr;
+    
+    if (aio == NULL) {
+        LOGE("Invalid AIO pointer");
+        return;
+    }
+    
+    nng_socket_recv(socket, aio);
+    LOGI("nng_socket_recv_aio initiated");
+}
+
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngAioResult
+  (JNIEnv* env, jobject obj, jlong aio_ptr) {
+    nng_aio* aio = (nng_aio*)(uintptr_t)aio_ptr;
+    
+    if (aio == NULL) {
+        LOGE("Invalid AIO pointer");
+        return NNG_EINVAL;
+    }
+    
+    int result = nng_aio_result(aio);
+    LOGI("nng_aio_result: %d", result);
+    return result;
+}
+
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngAioWait
+  (JNIEnv* env, jobject obj, jlong aio_ptr) {
+    nng_aio* aio = (nng_aio*)(uintptr_t)aio_ptr;
+    
+    if (aio == NULL) {
+        LOGE("Invalid AIO pointer");
+        return;
+    }
+    
+    nng_aio_wait(aio);
+    LOGI("nng_aio_wait completed");
+}
+
+// ============================================================
+// Message Operations
+// ============================================================
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngMsgAlloc
+  (JNIEnv* env, jobject obj, jint size) {
+    nng_msg* msg;
+    int rv = nng_msg_alloc(&msg, (size_t)size);
+    if (rv != 0) {
+        LOGE("nng_msg_alloc failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    LOGI("nng_msg_alloc successful, msg: %p, size: %d", msg, size);
+    return (jlong)(uintptr_t)msg;
+}
+
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngMsgFree
+  (JNIEnv* env, jobject obj, jlong msg_ptr) {
+    nng_msg* msg = (nng_msg*)(uintptr_t)msg_ptr;
+    if (msg != NULL) {
+        nng_msg_free(msg);
+        LOGI("nng_msg_free completed");
+    }
+}
+
+JNIEXPORT jbyteArray JNICALL Java_com_nng_android_NngWrapper_nngMsgBody
+  (JNIEnv* env, jobject obj, jlong msg_ptr) {
+    nng_msg* msg = (nng_msg*)(uintptr_t)msg_ptr;
+    
+    if (msg == NULL) {
+        LOGE("Invalid message pointer");
+        return NULL;
+    }
+    
+    void* body = nng_msg_body(msg);
+    size_t len = nng_msg_len(msg);
+    
+    if (body == NULL || len == 0) {
+        return env->NewByteArray(0);
+    }
+    
+    jbyteArray result = env->NewByteArray((jsize)len);
+    if (result != NULL) {
+        env->SetByteArrayRegion(result, 0, (jsize)len, (const jbyte*)body);
+    }
+    
+    LOGI("nng_msg_body returned %zu bytes", len);
+    return result;
+}
+
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngMsgLen
+  (JNIEnv* env, jobject obj, jlong msg_ptr) {
+    nng_msg* msg = (nng_msg*)(uintptr_t)msg_ptr;
+    
+    if (msg == NULL) {
+        LOGE("Invalid message pointer");
+        return 0;
+    }
+    
+    size_t len = nng_msg_len(msg);
+    LOGI("nng_msg_len: %zu", len);
+    return (jint)len;
+}
+
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngSendMsg
+  (JNIEnv* env, jobject obj, jlong socket_id, jlong msg_ptr, jint flags) {
+    nng_socket socket = id_to_socket(socket_id);
+    nng_msg* msg = (nng_msg*)(uintptr_t)msg_ptr;
+    
+    if (msg == NULL) {
+        LOGE("Invalid message pointer");
+        return NNG_EINVAL;
+    }
+    
+    int rv = nng_sendmsg(socket, msg, flags);
+    if (rv != 0) {
+        LOGE("nng_sendmsg failed: %s", nng_strerror(rv));
+    } else {
+        LOGI("nng_sendmsg successful");
+    }
+    
+    return rv;
+}
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngRecvMsg
+  (JNIEnv* env, jobject obj, jlong socket_id, jint flags) {
+    nng_socket socket = id_to_socket(socket_id);
+    nng_msg* msg;
+    
+    int rv = nng_recvmsg(socket, &msg, flags);
+    if (rv != 0) {
+        LOGE("nng_recvmsg failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    
+    LOGI("nng_recvmsg successful, msg: %p", msg);
+    return (jlong)(uintptr_t)msg;
+}
+
+// ============================================================
+// URL Operations
+// ============================================================
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngUrlParse
+  (JNIEnv* env, jobject obj, jstring url_str) {
+    if (url_str == NULL) {
+        LOGE("URL string is null");
+        return -NNG_EINVAL;
+    }
+    
+    const char* url_cstr = env->GetStringUTFChars(url_str, NULL);
+    if (url_cstr == NULL) {
+        LOGE("Failed to get URL string");
+        return -NNG_ENOMEM;
+    }
+    
+    nng_url* url;
+    int rv = nng_url_parse(&url, url_cstr);
+    
+    env->ReleaseStringUTFChars(url_str, url_cstr);
+    
+    if (rv != 0) {
+        LOGE("nng_url_parse failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    
+    LOGI("nng_url_parse successful, url: %p", url);
+    return (jlong)(uintptr_t)url;
+}
+
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngUrlFree
+  (JNIEnv* env, jobject obj, jlong url_ptr) {
+    nng_url* url = (nng_url*)(uintptr_t)url_ptr;
+    if (url != NULL) {
+        nng_url_free(url);
+        LOGI("nng_url_free completed");
+    }
+}
+
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngUrlScheme
+  (JNIEnv* env, jobject obj, jlong url_ptr) {
+    nng_url* url = (nng_url*)(uintptr_t)url_ptr;
+    
+    if (url == NULL || url->u_scheme == NULL) {
+        return NULL;
+    }
+    
+    return env->NewStringUTF(url->u_scheme);
+}
+
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngUrlHost
+  (JNIEnv* env, jobject obj, jlong url_ptr) {
+    nng_url* url = (nng_url*)(uintptr_t)url_ptr;
+    
+    if (url == NULL || url->u_hostname == NULL) {
+        return NULL;
+    }
+    
+    return env->NewStringUTF(url->u_hostname);
+}
+
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngUrlPort
+  (JNIEnv* env, jobject obj, jlong url_ptr) {
+    nng_url* url = (nng_url*)(uintptr_t)url_ptr;
+    
+    if (url == NULL || url->u_port == NULL) {
+        return NULL;
+    }
+    
+    return env->NewStringUTF(url->u_port);
+}
+
+// ============================================================
+// Dialer/Listener Operations
+// ============================================================
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngDialerCreate
+  (JNIEnv* env, jobject obj, jlong socket_id, jstring url_str) {
+    nng_socket socket = id_to_socket(socket_id);
+    
+    if (url_str == NULL) {
+        LOGE("URL string is null");
+        return -NNG_EINVAL;
+    }
+    
+    const char* url_cstr = env->GetStringUTFChars(url_str, NULL);
+    if (url_cstr == NULL) {
+        LOGE("Failed to get URL string");
+        return -NNG_ENOMEM;
+    }
+    
+    nng_dialer dialer;
+    int rv = nng_dialer_create(&dialer, socket, url_cstr);
+    
+    env->ReleaseStringUTFChars(url_str, url_cstr);
+    
+    if (rv != 0) {
+        LOGE("nng_dialer_create failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    
+    LOGI("nng_dialer_create successful, dialer ID: %u", dialer.id);
+    return (jlong)dialer.id;
+}
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngListenerCreate
+  (JNIEnv* env, jobject obj, jlong socket_id, jstring url_str) {
+    nng_socket socket = id_to_socket(socket_id);
+    
+    if (url_str == NULL) {
+        LOGE("URL string is null");
+        return -NNG_EINVAL;
+    }
+    
+    const char* url_cstr = env->GetStringUTFChars(url_str, NULL);
+    if (url_cstr == NULL) {
+        LOGE("Failed to get URL string");
+        return -NNG_ENOMEM;
+    }
+    
+    nng_listener listener;
+    int rv = nng_listener_create(&listener, socket, url_cstr);
+    
+    env->ReleaseStringUTFChars(url_str, url_cstr);
+    
+    if (rv != 0) {
+        LOGE("nng_listener_create failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    
+    LOGI("nng_listener_create successful, listener ID: %u", listener.id);
+    return (jlong)listener.id;
+}
+
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngDialerStart
+  (JNIEnv* env, jobject obj, jlong dialer_id, jint flags) {
+    nng_dialer dialer;
+    dialer.id = (uint32_t)dialer_id;
+    
+    int rv = nng_dialer_start(dialer, flags);
+    if (rv != 0) {
+        LOGE("nng_dialer_start failed: %s", nng_strerror(rv));
+    } else {
+        LOGI("nng_dialer_start successful");
+    }
+    
+    return rv;
+}
+
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngListenerStart
+  (JNIEnv* env, jobject obj, jlong listener_id, jint flags) {
+    nng_listener listener;
+    listener.id = (uint32_t)listener_id;
+    
+    int rv = nng_listener_start(listener, flags);
+    if (rv != 0) {
+        LOGE("nng_listener_start failed: %s", nng_strerror(rv));
+    } else {
+        LOGI("nng_listener_start successful");
+    }
+    
+    return rv;
+}
+
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngDialerClose
+  (JNIEnv* env, jobject obj, jlong dialer_id) {
+    nng_dialer dialer;
+    dialer.id = (uint32_t)dialer_id;
+    
+    int rv = nng_dialer_close(dialer);
+    if (rv != 0) {
+        LOGE("nng_dialer_close failed: %s", nng_strerror(rv));
+    } else {
+        LOGI("nng_dialer_close successful");
+    }
+    
+    return rv;
+}
+
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngListenerClose
+  (JNIEnv* env, jobject obj, jlong listener_id) {
+    nng_listener listener;
+    listener.id = (uint32_t)listener_id;
+    
+    int rv = nng_listener_close(listener);
+    if (rv != 0) {
+        LOGE("nng_listener_close failed: %s", nng_strerror(rv));
+    } else {
+        LOGI("nng_listener_close successful");
+    }
+    
+    return rv;
+}
+
+// ============================================================
+// Statistics Operations
+// ============================================================
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngStatsGet
+  (JNIEnv* env, jobject obj) {
+    nng_stat* stats;
+    int rv = nng_stats_get(&stats);
+    if (rv != 0) {
+        LOGE("nng_stats_get failed: %s", nng_strerror(rv));
+        return -rv;
+    }
+    
+    LOGI("nng_stats_get successful, stats: %p", stats);
+    return (jlong)(uintptr_t)stats;
+}
+
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngStatsFree
+  (JNIEnv* env, jobject obj, jlong stats_ptr) {
+    nng_stat* stats = (nng_stat*)(uintptr_t)stats_ptr;
+    if (stats != NULL) {
+        nng_stats_free(stats);
+        LOGI("nng_stats_free completed");
+    }
+}
+
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngStatName
+  (JNIEnv* env, jobject obj, jlong stat_ptr) {
+    nng_stat* stat = (nng_stat*)(uintptr_t)stat_ptr;
+    
+    if (stat == NULL) {
+        return NULL;
+    }
+    
+    const char* name = nng_stat_name(stat);
+    if (name == NULL) {
+        return NULL;
+    }
+    
+    return env->NewStringUTF(name);
+}
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngStatValue
+  (JNIEnv* env, jobject obj, jlong stat_ptr) {
+    nng_stat* stat = (nng_stat*)(uintptr_t)stat_ptr;
+    
+    if (stat == NULL) {
+        return 0;
+    }
+    
+    uint64_t value = nng_stat_value(stat);
+    return (jlong)value;
+}
+
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngStatNext
+  (JNIEnv* env, jobject obj, jlong stat_ptr) {
+    nng_stat* stat = (nng_stat*)(uintptr_t)stat_ptr;
+    
+    if (stat == NULL) {
+        return 0;
+    }
+    
+    nng_stat* next = nng_stat_next(stat);
+    return (jlong)(uintptr_t)next;
 }
 

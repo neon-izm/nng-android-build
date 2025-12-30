@@ -191,6 +191,246 @@ JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngStrerror
 JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngVersion
   (JNIEnv *, jobject);
 
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngSurveyor0Open
+ * Signature: ()J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngSurveyor0Open
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngRespondent0Open
+ * Signature: ()J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngRespondent0Open
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngAioAlloc
+ * Signature: ()J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngAioAlloc
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngAioFree
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngAioFree
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngSocketSendAio
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngSocketSendAio
+  (JNIEnv *, jobject, jlong, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngSocketRecvAio
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngSocketRecvAio
+  (JNIEnv *, jobject, jlong, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngAioResult
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngAioResult
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngAioWait
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngAioWait
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngMsgAlloc
+ * Signature: (I)J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngMsgAlloc
+  (JNIEnv *, jobject, jint);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngMsgFree
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngMsgFree
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngMsgBody
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_com_nng_android_NngWrapper_nngMsgBody
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngMsgLen
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngMsgLen
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngSendMsg
+ * Signature: (JJI)I
+ */
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngSendMsg
+  (JNIEnv *, jobject, jlong, jlong, jint);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngRecvMsg
+ * Signature: (JI)J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngRecvMsg
+  (JNIEnv *, jobject, jlong, jint);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngUrlParse
+ * Signature: (Ljava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngUrlParse
+  (JNIEnv *, jobject, jstring);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngUrlFree
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngUrlFree
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngUrlScheme
+ * Signature: (J)Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngUrlScheme
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngUrlHost
+ * Signature: (J)Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngUrlHost
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngUrlPort
+ * Signature: (J)Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngUrlPort
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngDialerCreate
+ * Signature: (JLjava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngDialerCreate
+  (JNIEnv *, jobject, jlong, jstring);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngListenerCreate
+ * Signature: (JLjava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngListenerCreate
+  (JNIEnv *, jobject, jlong, jstring);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngDialerStart
+ * Signature: (JI)I
+ */
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngDialerStart
+  (JNIEnv *, jobject, jlong, jint);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngListenerStart
+ * Signature: (JI)I
+ */
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngListenerStart
+  (JNIEnv *, jobject, jlong, jint);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngDialerClose
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngDialerClose
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngListenerClose
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_com_nng_android_NngWrapper_nngListenerClose
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngStatsGet
+ * Signature: ()J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngStatsGet
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngStatsFree
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngStatsFree
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngStatName
+ * Signature: (J)Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_com_nng_android_NngWrapper_nngStatName
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngStatValue
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngStatValue
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_nng_android_NngWrapper
+ * Method:    nngStatNext
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL Java_com_nng_android_NngWrapper_nngStatNext
+  (JNIEnv *, jobject, jlong);
+
 #ifdef __cplusplus
 }
 #endif
