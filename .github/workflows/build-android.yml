@@ -175,8 +175,10 @@ jobs:
         echo "Copied NNG headers to jni-build/nng-include/:"
         ls -la jni-build/nng-include/
         
-        # Copy the built libnng.so
+        # Copy the built libnng.so to multiple locations for ndk-build
         cp android-build-${{ matrix.android_abi }}/libnng.so jni-build/libs/${{ matrix.android_abi }}/
+        # Also copy to jni directory for easier access
+        cp android-build-${{ matrix.android_abi }}/libnng.so jni-build/jni/
         
         echo "JNI build environment prepared successfully"
 
@@ -188,7 +190,7 @@ jobs:
         # Import prebuilt libnng.so
         include $(CLEAR_VARS)
         LOCAL_MODULE := nng
-        LOCAL_SRC_FILES := $(LOCAL_PATH)/../libs/$(TARGET_ARCH_ABI)/libnng.so
+        LOCAL_SRC_FILES := libnng.so
         LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/../nng-include
         include $(PREBUILT_SHARED_LIBRARY)
         
