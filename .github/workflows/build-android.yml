@@ -452,36 +452,6 @@ jobs:
         echo "Final jniLibs structure:"
         find android-library/src/main/jniLibs -name "*.so" | sort
 
-    - name: Add libc++_shared.so to prevent runtime errors
-      run: |
-        echo "Adding libc++_shared.so for all architectures..."
-        
-        # Find Android NDK path
-        NDK_PATH=$(find $ANDROID_SDK_ROOT -name "ndk" -type d | head -1)
-        if [ -z "$NDK_PATH" ]; then
-          echo "Error: NDK not found in Android SDK"
-          exit 1
-        fi
-        
-        # Find the latest NDK version
-        NDK_VERSION=$(ls $NDK_PATH | sort -V | tail -1)
-        NDK_ROOT="$NDK_PATH/$NDK_VERSION"
-        
-        echo "Using NDK: $NDK_ROOT"
-        
-        # Copy libc++_shared.so for each architecture
-        for abi in arm64-v8a armeabi-v7a x86_64 x86; do
-          LIBCPP_PATH="$NDK_ROOT/sources/cxx-stl/llvm-libc++/libs/$abi/libc++_shared.so"
-          if [ -f "$LIBCPP_PATH" ]; then
-            echo "Copying libc++_shared.so for $abi..."
-            cp "$LIBCPP_PATH" android-library/src/main/jniLibs/$abi/
-          else
-            echo "Warning: libc++_shared.so not found for $abi at $LIBCPP_PATH"
-          fi
-        done
-        
-        echo "Updated jniLibs structure with libc++_shared.so:"
-        find android-library/src/main/jniLibs -name "*.so" | sort
 
     - name: Create gradle.properties
       run: |
