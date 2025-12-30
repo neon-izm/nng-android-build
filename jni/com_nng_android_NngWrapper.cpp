@@ -23,6 +23,7 @@
 #include <android/log.h>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 
 #define LOG_TAG "NNG-JNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)

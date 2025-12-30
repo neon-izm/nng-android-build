@@ -219,7 +219,24 @@ jobs:
         echo "Starting JNI build with ndk-build..."
         echo "NDK_ROOT: $ANDROID_NDK_ROOT"
         echo "Current directory: $(pwd)"
+        
+        echo "Directory structure before build:"
+        find . -name "*.so" -o -name "*.mk" | sort
+        
+        echo "JNI directory contents:"
         ls -la jni/
+        
+        echo "Libs directory structure:"
+        ls -la libs/ 2>/dev/null || echo "libs directory not found"
+        ls -la libs/${{ matrix.android_abi }}/ 2>/dev/null || echo "Architecture-specific libs directory not found"
+        
+        # Verify libnng.so exists at expected location
+        if [ ! -f "libs/${{ matrix.android_abi }}/libnng.so" ]; then
+          echo "Error: libnng.so not found at expected location!"
+          echo "Expected: libs/${{ matrix.android_abi }}/libnng.so"
+          find . -name "libnng.so" -type f
+          exit 1
+        fi
         
         # Run ndk-build with error handling
         if ! ndk-build NDK_PROJECT_PATH=. NDK_APPLICATION_MK=./jni/Application.mk APP_BUILD_SCRIPT=./jni/Android.mk -j$(nproc); then
