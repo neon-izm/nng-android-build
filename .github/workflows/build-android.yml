@@ -1,4 +1,4 @@
-name: Build NNG Shared Library for Android
+name: Build NNG Shared Library for Android (16KB Page Size Compatible)
 
 on:
   workflow_dispatch:
@@ -31,6 +31,11 @@ env:
 
   # Android STL
   ANDROID_STL: 'c++_static'
+  
+  # 16KB Page Size Support
+  # Enables 16KB page size alignment for 64-bit architectures (arm64-v8a, x86_64)
+  # Required for Google Play compatibility starting November 1, 2025
+  # See: https://developer.android.com/guide/practices/page-sizes
 
 jobs:
   build-android-shared:
@@ -95,6 +100,16 @@ jobs:
         # This creates libnng.so with pure NNG C API (no JNI)
         # Can be used directly by Unity via P/Invoke
         # See: docs/PROJECT_ARTIFACTS_DESIGN.md
+        
+        # Set 16KB page size alignment for 64-bit architectures
+        EXTRA_FLAGS=""
+        if [[ "${{ matrix.android_abi }}" == "arm64-v8a" || "${{ matrix.android_abi }}" == "x86_64" ]]; then
+          echo "Configuring 16KB page size alignment for ${{ matrix.android_abi }}"
+          EXTRA_FLAGS="-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384 -DCMAKE_EXE_LINKER_FLAGS=-Wl,-z,max-page-size=16384"
+        else
+          echo "Using default page size for 32-bit architecture: ${{ matrix.android_abi }}"
+        fi
+        
         cmake \
           -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE \
           -DANDROID_ABI=${{ matrix.android_abi }} \
@@ -105,6 +120,7 @@ jobs:
           -DNNG_TOOLS=OFF \
           -DNNG_ENABLE_STATS=ON \
           -DBUILD_SHARED_LIBS=ON \
+          $EXTRA_FLAGS \
           ..
 
     - name: Build NNG
@@ -122,6 +138,26 @@ jobs:
           exit 1
         fi
         file libnng.so
+        
+        # Check 16KB page size alignment for 64-bit architectures
+        if [[ "${{ matrix.android_abi }}" == "arm64-v8a" || "${{ matrix.android_abi }}" == "x86_64" ]]; then
+          echo "Checking 16KB page size alignment for ${{ matrix.android_abi }}..."
+          ALIGNMENT=$(objdump -p libnng.so | grep "LOAD.*align" | head -1 | sed 's/.*align 2\*\*//' | sed 's/ .*//')
+          if [ -n "$ALIGNMENT" ]; then
+            ALIGN_BYTES=$((2**ALIGNMENT))
+            echo "ELF alignment: ${ALIGN_BYTES} bytes (2^${ALIGNMENT})"
+            if [ "$ALIGN_BYTES" -ge 16384 ]; then
+              echo "✅ 16KB compatible alignment detected"
+            else
+              echo "⚠️  Using compatibility mode alignment (<16KB)"
+            fi
+          else
+            echo "❓ Could not determine alignment"
+          fi
+        else
+          echo "32-bit architecture: 16KB alignment not required for ${{ matrix.android_abi }}"
+        fi
+        
         # List exported symbols
         readelf -sW libnng.so | grep -E "nng_pair|nng_send|nng_recv|nng_listen|nng_dial" | head -20
 
@@ -184,25 +220,35 @@ jobs:
 
     - name: Create Android.mk for JNI build
       run: |
-        cat > jni-build/jni/Android.mk << 'EOF'
-        LOCAL_PATH := $(call my-dir)
+        # Set 16KB page size alignment for 64-bit architectures
+        if [[ "${{ matrix.android_abi }}" == "arm64-v8a" || "${{ matrix.android_abi }}" == "x86_64" ]]; then
+          echo "Creating Android.mk with 16KB page size alignment for ${{ matrix.android_abi }}"
+          LINKER_FLAGS="-Wl,-z,max-page-size=16384"
+        else
+          echo "Creating Android.mk with default settings for 32-bit architecture: ${{ matrix.android_abi }}"
+          LINKER_FLAGS=""
+        fi
+        
+        cat > jni-build/jni/Android.mk << EOF
+        LOCAL_PATH := \$(call my-dir)
         
         # Import prebuilt libnng.so
-        include $(CLEAR_VARS)
+        include \$(CLEAR_VARS)
         LOCAL_MODULE := nng
         LOCAL_SRC_FILES := libnng.so
-        LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/../nng-include
-        include $(PREBUILT_SHARED_LIBRARY)
+        LOCAL_EXPORT_C_INCLUDES := \$(LOCAL_PATH)/../nng-include
+        include \$(PREBUILT_SHARED_LIBRARY)
         
         # Build JNI wrapper
-        include $(CLEAR_VARS)
+        include \$(CLEAR_VARS)
         LOCAL_MODULE := nng_jni
         LOCAL_SRC_FILES := com_nng_android_NngWrapper.cpp
-        LOCAL_C_INCLUDES := $(LOCAL_PATH)/../nng-include
+        LOCAL_C_INCLUDES := \$(LOCAL_PATH)/../nng-include
         LOCAL_SHARED_LIBRARIES := nng
         LOCAL_LDLIBS := -llog -landroid
         LOCAL_CPPFLAGS := -std=c++11 -fexceptions
-        include $(BUILD_SHARED_LIBRARY)
+        LOCAL_LDFLAGS := $LINKER_FLAGS
+        include \$(BUILD_SHARED_LIBRARY)
         EOF
 
     - name: Create Application.mk for JNI build
@@ -259,6 +305,26 @@ jobs:
           exit 1
         fi
         file libs/${{ matrix.android_abi }}/libnng_jni.so
+        
+        # Check 16KB page size alignment for 64-bit architectures
+        if [[ "${{ matrix.android_abi }}" == "arm64-v8a" || "${{ matrix.android_abi }}" == "x86_64" ]]; then
+          echo "Checking 16KB page size alignment for JNI library (${{ matrix.android_abi }})..."
+          ALIGNMENT=$(objdump -p libs/${{ matrix.android_abi }}/libnng_jni.so | grep "LOAD.*align" | head -1 | sed 's/.*align 2\*\*//' | sed 's/ .*//')
+          if [ -n "$ALIGNMENT" ]; then
+            ALIGN_BYTES=$((2**ALIGNMENT))
+            echo "ELF alignment: ${ALIGN_BYTES} bytes (2^${ALIGNMENT})"
+            if [ "$ALIGN_BYTES" -ge 16384 ]; then
+              echo "✅ 16KB compatible alignment detected for JNI library"
+            else
+              echo "⚠️  Using compatibility mode alignment for JNI library (<16KB)"
+            fi
+          else
+            echo "❓ Could not determine JNI library alignment"
+          fi
+        else
+          echo "32-bit architecture: 16KB alignment not required for JNI library (${{ matrix.android_abi }})"
+        fi
+        
         # Check JNI symbols
         readelf -sW libs/${{ matrix.android_abi }}/libnng_jni.so | grep -E "Java_com_nng_android_NngWrapper" | head -10
 
