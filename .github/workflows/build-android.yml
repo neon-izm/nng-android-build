@@ -539,11 +539,11 @@ jobs:
           # Install gradle temporarily to generate wrapper
           if ! command -v gradle &> /dev/null; then
             echo "Installing Gradle..."
-            wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
-            unzip -q gradle-8.6-bin.zip
-            export PATH=$PWD/gradle-8.6/bin:$PATH
+            wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+            unzip -q gradle-8.7-bin.zip
+            export PATH=$PWD/gradle-8.7/bin:$PATH
           fi
-          gradle wrapper --gradle-version=8.6
+          gradle wrapper --gradle-version=8.7
         fi
         
         # Make gradlew executable
