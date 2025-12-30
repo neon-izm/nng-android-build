@@ -30,7 +30,7 @@ env:
   JAVA_VERSION: '17'
 
   # Android STL
-  ANDROID_STL: 'c++_shared'
+  ANDROID_STL: 'c++_static'
 
 jobs:
   build-android-shared:
@@ -458,6 +458,37 @@ jobs:
         echo "Final jniLibs structure:"
         find android-library/src/main/jniLibs -name "*.so" | sort
 
+    - name: Add libc++_shared.so to prevent runtime errors
+      run: |
+        echo "Adding libc++_shared.so for all architectures..."
+        
+        # Find Android NDK path
+        NDK_PATH=$(find $ANDROID_SDK_ROOT -name "ndk" -type d | head -1)
+        if [ -z "$NDK_PATH" ]; then
+          echo "Error: NDK not found in Android SDK"
+          exit 1
+        fi
+        
+        # Find the latest NDK version
+        NDK_VERSION=$(ls $NDK_PATH | sort -V | tail -1)
+        NDK_ROOT="$NDK_PATH/$NDK_VERSION"
+        
+        echo "Using NDK: $NDK_ROOT"
+        
+        # Copy libc++_shared.so for each architecture
+        for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+          LIBCPP_PATH="$NDK_ROOT/sources/cxx-stl/llvm-libc++/libs/$abi/libc++_shared.so"
+          if [ -f "$LIBCPP_PATH" ]; then
+            echo "Copying libc++_shared.so for $abi..."
+            cp "$LIBCPP_PATH" android-library/src/main/jniLibs/$abi/
+          else
+            echo "Warning: libc++_shared.so not found for $abi at $LIBCPP_PATH"
+          fi
+        done
+        
+        echo "Updated jniLibs structure with libc++_shared.so:"
+        find android-library/src/main/jniLibs -name "*.so" | sort
+
     - name: Create gradle.properties
       run: |
         echo "Creating gradle.properties with required settings..."
@@ -496,8 +527,30 @@ jobs:
         echo "Updated settings.gradle:"
         cat settings.gradle
 
-    - name: Make gradlew executable
-      run: chmod +x ./gradlew
+    - name: Setup Gradle Wrapper
+      run: |
+        echo "Setting up Gradle Wrapper..."
+        # Create gradle wrapper directory if it doesn't exist
+        mkdir -p gradle/wrapper
+        
+        # Use gradle to generate wrapper if gradlew doesn't exist or gradle-wrapper.jar is missing
+        if [ ! -f "./gradlew" ] || [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+          echo "Generating Gradle Wrapper..."
+          # Install gradle temporarily to generate wrapper
+          if ! command -v gradle &> /dev/null; then
+            echo "Installing Gradle..."
+            wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip
+            unzip -q gradle-8.6-bin.zip
+            export PATH=$PWD/gradle-8.6/bin:$PATH
+          fi
+          gradle wrapper --gradle-version=8.6
+        fi
+        
+        # Make gradlew executable
+        chmod +x ./gradlew
+        
+        # Verify wrapper works
+        ./gradlew --version
 
     - name: Build AAR
       run: |
