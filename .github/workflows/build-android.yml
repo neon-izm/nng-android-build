@@ -47,22 +47,27 @@ jobs:
         repository: nanomsg/nng
         ref: ${{ github.event.inputs.version_tag || env.NNG_VERSION }}
 
+    - name: Checkout this repository (for JNI files)
+      uses: actions/checkout@v4
+      with:
+        path: jni-source
+
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: ${{ env.JAVA_VERSION }}
 
-    - name: Setup Android NDK
-      uses: nttld/setup-ndk@v1
-      with:
-        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
-        add-to-path: false
-
     - name: Setup CMake
       uses: jwlawson/actions-setup-cmake@v2
       with:
         cmake-version: ${{ env.CMAKE_VERSION }}
+
+    - name: Setup Android NDK (for JNI build)
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+        add-to-path: true
 
     - name: Cache CMake build
       uses: actions/cache@v4
@@ -120,17 +125,144 @@ jobs:
         # List exported symbols
         readelf -sW libnng.so | grep -E "nng_pair|nng_send|nng_recv|nng_listen|nng_dial" | head -20
 
-    - name: Prepare artifacts
+    - name: Prepare JNI build environment
       run: |
-        mkdir -p artifacts/${{ matrix.android_abi }}
-        cp android-build-${{ matrix.android_abi }}/libnng.so artifacts/${{ matrix.android_abi }}/
+        # Verify required files exist
+        if [ ! -f "jni-source/jni/com_nng_android_NngWrapper.cpp" ]; then
+          echo "Error: JNI source file not found!"
+          ls -la jni-source/jni/ || echo "jni-source/jni/ directory not found"
+          exit 1
+        fi
+        
+        if [ ! -f "android-build-${{ matrix.android_abi }}/libnng.so" ]; then
+          echo "Error: libnng.so not found!"
+          ls -la android-build-${{ matrix.android_abi }}/
+          exit 1
+        fi
+        
+        # Create directory structure for ndk-build
+        mkdir -p jni-build/jni
+        mkdir -p jni-build/libs/${{ matrix.android_abi }}
+        mkdir -p jni-build/nng-include
+        
+        # Copy JNI source files
+        cp jni-source/jni/com_nng_android_NngWrapper.cpp jni-build/jni/
+        cp jni-source/jni/com_nng_android_NngWrapper.h jni-build/jni/
+        
+        # Copy NNG headers (from the checked out NNG repository)
+        echo "Checking NNG repository structure:"
+        ls -la
+        
+        if [ ! -d "include" ]; then
+          echo "Error: NNG include directory not found!"
+          echo "Available directories:"
+          ls -la
+          exit 1
+        fi
+        
+        echo "NNG include directory contents:"
+        ls -la include/
+        
+        # Verify main NNG header exists
+        if [ ! -f "include/nng/nng.h" ]; then
+          echo "Error: Main NNG header (nng/nng.h) not found!"
+          find include -name "*.h" | head -10
+          exit 1
+        fi
+        
+        cp -r include/* jni-build/nng-include/
+        
+        echo "Copied NNG headers to jni-build/nng-include/:"
+        ls -la jni-build/nng-include/
+        
+        # Copy the built libnng.so
+        cp android-build-${{ matrix.android_abi }}/libnng.so jni-build/libs/${{ matrix.android_abi }}/
+        
+        echo "JNI build environment prepared successfully"
 
-    - name: Upload build artifacts
+    - name: Create Android.mk for JNI build
+      run: |
+        cat > jni-build/jni/Android.mk << 'EOF'
+        LOCAL_PATH := $(call my-dir)
+        
+        # Import prebuilt libnng.so
+        include $(CLEAR_VARS)
+        LOCAL_MODULE := nng
+        LOCAL_SRC_FILES := ../libs/$(TARGET_ARCH_ABI)/libnng.so
+        LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/../nng-include
+        include $(PREBUILT_SHARED_LIBRARY)
+        
+        # Build JNI wrapper
+        include $(CLEAR_VARS)
+        LOCAL_MODULE := nng_jni
+        LOCAL_SRC_FILES := com_nng_android_NngWrapper.cpp
+        LOCAL_C_INCLUDES := $(LOCAL_PATH)/../nng-include
+        LOCAL_SHARED_LIBRARIES := nng
+        LOCAL_LDLIBS := -llog -landroid
+        LOCAL_CPPFLAGS := -std=c++11 -fexceptions
+        include $(BUILD_SHARED_LIBRARY)
+        EOF
+
+    - name: Create Application.mk for JNI build
+      run: |
+        cat > jni-build/jni/Application.mk << 'EOF'
+        APP_ABI := ${{ matrix.android_abi }}
+        APP_PLATFORM := android-${{ env.ANDROID_MIN_SDK }}
+        APP_STL := ${{ env.ANDROID_STL }}
+        APP_OPTIM := release
+        APP_CPPFLAGS := -std=c++11 -fexceptions
+        EOF
+
+    - name: Build JNI wrapper
+      run: |
+        cd jni-build
+        echo "Starting JNI build with ndk-build..."
+        echo "NDK_ROOT: $ANDROID_NDK_ROOT"
+        echo "Current directory: $(pwd)"
+        ls -la jni/
+        
+        # Run ndk-build with error handling
+        if ! ndk-build NDK_PROJECT_PATH=. NDK_APPLICATION_MK=./jni/Application.mk APP_BUILD_SCRIPT=./jni/Android.mk -j$(nproc); then
+          echo "Error: ndk-build failed!"
+          echo "Build log:"
+          cat obj/local/${{ matrix.android_abi }}/objs/nng_jni/*.o.d 2>/dev/null || echo "No build log found"
+          exit 1
+        fi
+        
+        echo "JNI build completed successfully"
+
+    - name: Verify JNI build output
+      run: |
+        cd jni-build
+        ls -la libs/${{ matrix.android_abi }}/
+        if [ ! -f "libs/${{ matrix.android_abi }}/libnng_jni.so" ]; then
+          echo "Error: libnng_jni.so not found!"
+          exit 1
+        fi
+        file libs/${{ matrix.android_abi }}/libnng_jni.so
+        # Check JNI symbols
+        readelf -sW libs/${{ matrix.android_abi }}/libnng_jni.so | grep -E "Java_com_nng_android_NngWrapper" | head -10
+
+    - name: Prepare complete artifacts (shared + JNI)
+      run: |
+        mkdir -p complete-artifacts/${{ matrix.android_abi }}
+        # Copy both libraries
+        cp android-build-${{ matrix.android_abi }}/libnng.so complete-artifacts/${{ matrix.android_abi }}/
+        cp jni-build/libs/${{ matrix.android_abi }}/libnng_jni.so complete-artifacts/${{ matrix.android_abi }}/
+
+    - name: Upload complete libraries (shared + JNI)
       uses: actions/upload-artifact@v4
       with:
-        name: libnng-shared-android-${{ matrix.android_abi }}${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
-        path: artifacts/${{ matrix.android_abi }}/libnng.so
+        name: libnng-complete-android-${{ matrix.android_abi }}${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
+        path: complete-artifacts/${{ matrix.android_abi }}/
         retention-days: 30
+
+    - name: Upload temp complete libraries for packaging
+      uses: actions/upload-artifact@v4
+      with:
+        name: temp-complete-${{ matrix.android_abi }}
+        path: complete-artifacts/${{ matrix.android_abi }}/
+        retention-days: 1
 
   package-artifacts:
     needs: build-android-shared
@@ -138,45 +270,80 @@ jobs:
     if: always() && (needs.build-android-shared.result == 'success')
 
     steps:
-    - name: Download all artifacts
+    - name: Download temp complete artifacts for packaging
       uses: actions/download-artifact@v4
       with:
-        path: all-artifacts
+        pattern: temp-complete-*
+        path: temp-artifacts
 
     - name: Package all Android builds
       run: |
-        mkdir -p libnng-shared-android-all
+        mkdir -p libnng-android-complete
+        
+        echo "Available temp artifacts:"
+        ls -la temp-artifacts/
+        
         for abi in arm64-v8a armeabi-v7a x86_64 x86; do
-          # Handle version tag in artifact name
-          artifact_name="libnng-shared-android-$abi"
-          if [ -n "${{ github.event.inputs.version_tag }}" ]; then
-            artifact_name="libnng-shared-android-$abi-${{ github.event.inputs.version_tag }}"
-          fi
+          echo "Processing architecture: $abi"
           
-          if [ -d "all-artifacts/$artifact_name" ]; then
-            mkdir -p "libnng-shared-android-all/$abi"
-            cp "all-artifacts/$artifact_name/libnng.so" "libnng-shared-android-all/$abi/"
+          # Create architecture directory
+          mkdir -p "libnng-android-complete/$abi"
+          
+          # Copy both libraries from temp artifacts
+          if [ -d "temp-artifacts/temp-complete-$abi" ]; then
+            echo "Found artifacts for $abi:"
+            ls -la "temp-artifacts/temp-complete-$abi/"
+            cp temp-artifacts/temp-complete-$abi/* "libnng-android-complete/$abi/"
+            
+            # Verify both libraries are present
+            if [ ! -f "libnng-android-complete/$abi/libnng.so" ]; then
+              echo "Warning: libnng.so missing for $abi"
+            fi
+            if [ ! -f "libnng-android-complete/$abi/libnng_jni.so" ]; then
+              echo "Warning: libnng_jni.so missing for $abi"
+            fi
+          else
+            echo "Warning: No artifacts found for $abi"
           fi
         done
         
-        # Create a simple README
-        cat > libnng-shared-android-all/README.md << EOF
-        # NNG Android Shared Libraries (Pure NNG, No JNI)
+        echo "Final package contents:"
+        find libnng-android-complete -type f -name "*.so" | sort
         
-        This package contains NNG shared libraries built for Android.
-        These are pure NNG libraries without JNI wrapper.
+        # Create a comprehensive README
+        cat > libnng-android-complete/README.md << EOF
+        # NNG Android Libraries - Complete Package
+        
+        This package contains both pure NNG shared libraries and JNI wrapper libraries for Android.
+        
+        ## Contents
+        
+        Each architecture directory contains:
+        - \`libnng.so\`: Pure NNG shared library (C API)
+        - \`libnng_jni.so\`: JNI wrapper library (Java API)
         
         ## Use Cases
         
-        ### Unity (C# P/Invoke)
+        ### Unity (C# P/Invoke) - Use libnng.so only
         Place libnng.so in Assets/Plugins/Android/libs/<arch>/ and use P/Invoke:
         \`\`\`csharp
         [DllImport("nng")]
         public static extern int nng_pair0_open(out IntPtr socket);
         \`\`\`
         
-        ### Android Java (with JNI wrapper)
-        Use libnng.so together with libnng_jni.so (built separately).
+        ### Android Java App - Use both libraries
+        1. Place both libnng.so and libnng_jni.so in your Android project's jniLibs/<arch>/ directory
+        2. Load the JNI wrapper in your Java code:
+        \`\`\`java
+        static {
+            System.loadLibrary("nng");      // Load libnng.so first
+            System.loadLibrary("nng_jni");  // Then load libnng_jni.so
+        }
+        \`\`\`
+        3. Use the NngWrapper class (Java class not included in this package)
+        
+        ### React Native - Use both libraries
+        Similar to Android Java, place both .so files in android/app/src/main/jniLibs/<arch>/
         
         ## Architecture Support
         - arm64-v8a: 64-bit ARM (recommended for modern devices)
@@ -185,28 +352,35 @@ jobs:
         - x86: 32-bit x86 (legacy emulators)
         
         ## Build Information
-        - Built with Android NDK r25c
-        - Target API Level: 21 (Android 5.0)
-        - STL: c++_shared
+        - Built with Android NDK ${{ env.ANDROID_NDK_VERSION }}
+        - Target API Level: ${{ env.ANDROID_MIN_SDK }} 
+        - STL: ${{ env.ANDROID_STL }}
         - Build Type: Release
-        - Version: ${{ github.event.inputs.version_tag || 'latest' }}
+        - NNG Version: ${{ github.event.inputs.version_tag || env.NNG_VERSION }}
         
-        Generated on: $(date)
+        ## JNI Wrapper API
+        The JNI wrapper provides these main functions:
+        - Socket creation: nngPair0Open, nngReq0Open, nngPub0Open, etc.
+        - Communication: nngSend, nngRecv, nngListen, nngDial
+        - Configuration: nngSetRecvTimeout, nngSetSendTimeout
+        - Utilities: nngClose, nngStrerror, nngVersion
+        
+        Generated on: \$(date)
         Commit: ${{ github.sha }}
         EOF
         
         # Create package name with version if specified
-        package_name="libnng-shared-android-all"
+        package_name="libnng-android-complete"
         if [ -n "${{ github.event.inputs.version_tag }}" ]; then
-          package_name="libnng-shared-android-all-${{ github.event.inputs.version_tag }}"
+          package_name="libnng-android-complete-${{ github.event.inputs.version_tag }}"
         fi
-        tar -czf "$package_name.tar.gz" libnng-shared-android-all/
+        tar -czf "$package_name.tar.gz" libnng-android-complete/
 
     - name: Upload combined package
       uses: actions/upload-artifact@v4
       with:
-        name: libnng-shared-android-all-architectures${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
+        name: libnng-android-complete-all-architectures${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
         path: |
-          libnng-shared-android-all*.tar.gz
-          libnng-shared-android-all/
+          libnng-android-complete*.tar.gz
+          libnng-android-complete/
         retention-days: 90
