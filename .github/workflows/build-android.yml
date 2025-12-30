@@ -397,11 +397,6 @@ jobs:
           libnng-android-complete/
         retention-days: 90
 
-    - name: Clean up temp artifacts
-      uses: geekyeggo/delete-artifact@v5
-      with:
-        name: temp-complete-*
-        failOnError: false
 
   build-aar:
     needs: build-android-shared
@@ -579,7 +574,13 @@ jobs:
         path: android-library/build/outputs/aar/android-library-release.aar
         retention-days: 90
 
-    - name: Clean up temp artifacts (if not already cleaned)
+  cleanup:
+    needs: [package-artifacts, build-aar]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Clean up temp artifacts
       uses: geekyeggo/delete-artifact@v5
       with:
         name: temp-complete-*
