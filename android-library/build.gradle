@@ -1,0 +1,100 @@
+plugins {
+    id 'com.android.library'
+    id 'maven-publish'
+}
+
+android {
+    namespace 'com.nng.android'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName "1.11.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.annotation:annotation:1.7.1'
+    
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+publishing {
+    publications {
+        release(MavenPublication) {
+            groupId = 'com.nng.android'
+            artifactId = 'nng-android'
+            version = '1.11.0'
+
+            afterEvaluate {
+                from components.release
+            }
+
+            pom {
+                name = 'NNG Android Library'
+                description = 'NNG (nanomsg-next-generation) messaging library for Android'
+                url = 'https://github.com/nanomsg/nng-android-build'
+                
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                
+                developers {
+                    developer {
+                        id = 'nng-android'
+                        name = 'NNG Android Team'
+                        email = 'nng-android@example.com'
+                    }
+                }
+                
+                scm {
+                    connection = 'scm:git:git://github.com/nanomsg/nng-android-build.git'
+                    developerConnection = 'scm:git:ssh://github.com:nanomsg/nng-android-build.git'
+                    url = 'https://github.com/nanomsg/nng-android-build/tree/main'
+                }
+            }
+        }
+    }
+}

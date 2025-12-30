@@ -30,7 +30,7 @@ env:
   JAVA_VERSION: '17'
 
   # Android STL
-  ANDROID_STL: 'c++_shared'
+  ANDROID_STL: 'c++_static'
 
 jobs:
   build-android-shared:
@@ -103,7 +103,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DNNG_TESTS=OFF \
           -DNNG_TOOLS=OFF \
-          -DNNG_ENABLE_STATS=OFF \
+          -DNNG_ENABLE_STATS=ON \
           -DBUILD_SHARED_LIBS=ON \
           ..
 
@@ -269,13 +269,6 @@ jobs:
         cp android-build-${{ matrix.android_abi }}/libnng.so complete-artifacts/${{ matrix.android_abi }}/
         cp jni-build/libs/${{ matrix.android_abi }}/libnng_jni.so complete-artifacts/${{ matrix.android_abi }}/
 
-    - name: Upload complete libraries (shared + JNI)
-      uses: actions/upload-artifact@v4
-      with:
-        name: libnng-complete-android-${{ matrix.android_abi }}${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
-        path: complete-artifacts/${{ matrix.android_abi }}/
-        retention-days: 30
-
     - name: Upload temp complete libraries for packaging
       uses: actions/upload-artifact@v4
       with:
@@ -289,7 +282,7 @@ jobs:
     if: always() && (needs.build-android-shared.result == 'success')
 
     steps:
-    - name: Download temp complete artifacts for packaging
+    - name: Download all architecture artifacts for packaging
       uses: actions/download-artifact@v4
       with:
         pattern: temp-complete-*
@@ -403,3 +396,192 @@ jobs:
           libnng-android-complete*.tar.gz
           libnng-android-complete/
         retention-days: 90
+
+
+  build-aar:
+    needs: build-android-shared
+    runs-on: ubuntu-latest
+    if: always() && (needs.build-android-shared.result == 'success')
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Set Android environment variables
+      run: |
+        echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+
+    - name: Install required SDK components
+      run: |
+        sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
+    - name: Download all native libraries
+      uses: actions/download-artifact@v4
+      with:
+        pattern: temp-complete-*
+        path: temp-artifacts
+
+    - name: Setup Android library native libraries
+      run: |
+        echo "Setting up native libraries for AAR..."
+        
+        # Create jniLibs directories
+        mkdir -p android-library/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86_64,x86}
+        
+        # Copy native libraries to jniLibs
+        for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+          if [ -d "temp-artifacts/temp-complete-$abi" ]; then
+            echo "Copying libraries for $abi..."
+            cp temp-artifacts/temp-complete-$abi/*.so android-library/src/main/jniLibs/$abi/
+            ls -la android-library/src/main/jniLibs/$abi/
+          else
+            echo "Warning: No libraries found for $abi"
+          fi
+        done
+        
+        echo "Final jniLibs structure:"
+        find android-library/src/main/jniLibs -name "*.so" | sort
+
+    - name: Add libc++_shared.so to prevent runtime errors
+      run: |
+        echo "Adding libc++_shared.so for all architectures..."
+        
+        # Find Android NDK path
+        NDK_PATH=$(find $ANDROID_SDK_ROOT -name "ndk" -type d | head -1)
+        if [ -z "$NDK_PATH" ]; then
+          echo "Error: NDK not found in Android SDK"
+          exit 1
+        fi
+        
+        # Find the latest NDK version
+        NDK_VERSION=$(ls $NDK_PATH | sort -V | tail -1)
+        NDK_ROOT="$NDK_PATH/$NDK_VERSION"
+        
+        echo "Using NDK: $NDK_ROOT"
+        
+        # Copy libc++_shared.so for each architecture
+        for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+          LIBCPP_PATH="$NDK_ROOT/sources/cxx-stl/llvm-libc++/libs/$abi/libc++_shared.so"
+          if [ -f "$LIBCPP_PATH" ]; then
+            echo "Copying libc++_shared.so for $abi..."
+            cp "$LIBCPP_PATH" android-library/src/main/jniLibs/$abi/
+          else
+            echo "Warning: libc++_shared.so not found for $abi at $LIBCPP_PATH"
+          fi
+        done
+        
+        echo "Updated jniLibs structure with libc++_shared.so:"
+        find android-library/src/main/jniLibs -name "*.so" | sort
+
+    - name: Create gradle.properties
+      run: |
+        echo "Creating gradle.properties with required settings..."
+        cat > gradle.properties << 'EOF'
+        # Project-wide Gradle settings.
+        # IDE (e.g. Android Studio) users:
+        # Gradle settings configured through the IDE *will override*
+        # any settings specified in this file.
+        # For more details on how to configure your build environment visit
+        # http://www.gradle.org/docs/current/userguide/build_environment.html
+
+        # Specifies the JVM arguments used for the daemon process.
+        # The setting is particularly useful for tweaking memory settings.
+        org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+
+        # When configured, Gradle will run in incubating parallel mode.
+        # This option should only be used with decoupled projects. More details, visit
+        # http://www.gradle.org/docs/current/userguide/multi_project_builds.html#sec:decoupled_projects
+        # org.gradle.parallel=true
+
+        # AndroidX package structure to make it clearer which packages are bundled with the
+        # Android operating system, and which are packaged with your app's APK
+        # https://developer.android.com/topic/libraries/support-library/androidx-rn
+        android.useAndroidX=true
+
+        # Enables namespacing of each library's R class so that its R class includes only the
+        # resources declared in the library itself and none from the library's dependencies,
+        # thereby reducing the size of the R class for that library
+        android.nonTransitiveRClass=true
+        EOF
+
+    - name: Fix settings.gradle repository mode
+      run: |
+        echo "Fixing settings.gradle repository mode..."
+        sed -i 's/repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)/repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)/g' settings.gradle
+        echo "Updated settings.gradle:"
+        cat settings.gradle
+
+    - name: Setup Gradle Wrapper
+      run: |
+        echo "Setting up Gradle Wrapper..."
+        # Create gradle wrapper directory if it doesn't exist
+        mkdir -p gradle/wrapper
+        
+        # Use gradle to generate wrapper if gradlew doesn't exist or gradle-wrapper.jar is missing
+        if [ ! -f "./gradlew" ] || [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+          echo "Generating Gradle Wrapper..."
+          # Install gradle temporarily to generate wrapper
+          if ! command -v gradle &> /dev/null; then
+            echo "Installing Gradle..."
+            wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+            unzip -q gradle-8.7-bin.zip
+            export PATH=$PWD/gradle-8.7/bin:$PATH
+          fi
+          gradle wrapper --gradle-version=8.7
+        fi
+        
+        # Make gradlew executable
+        chmod +x ./gradlew
+        
+        # Verify wrapper works
+        ./gradlew --version
+
+    - name: Build AAR
+      run: |
+        echo "Building AAR with Gradle..."
+        echo "ANDROID_HOME: $ANDROID_HOME"
+        echo "JAVA_HOME: $JAVA_HOME"
+        ./gradlew android-library:assembleRelease --stacktrace --info
+
+    - name: Verify AAR build
+      run: |
+        echo "Verifying AAR build output..."
+        ls -la android-library/build/outputs/aar/
+        
+        # Check AAR contents
+        if [ -f android-library/build/outputs/aar/android-library-release.aar ]; then
+          echo "AAR file created successfully"
+          unzip -l android-library/build/outputs/aar/android-library-release.aar
+        else
+          echo "Error: AAR file not found!"
+          exit 1
+        fi
+
+    - name: Upload AAR
+      uses: actions/upload-artifact@v4
+      with:
+        name: nng-android-library-aar${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
+        path: android-library/build/outputs/aar/android-library-release.aar
+        retention-days: 90
+
+  cleanup:
+    needs: [package-artifacts, build-aar]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Clean up temp artifacts
+      uses: geekyeggo/delete-artifact@v5
+      with:
+        name: temp-complete-*
+        failOnError: false
