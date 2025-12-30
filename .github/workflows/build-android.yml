@@ -1,0 +1,212 @@
+name: Build NNG Shared Library for Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version tag to checkout (e.g., v1.5.2)'
+        required: false
+        default: ''
+
+env:
+  # ===========================================
+  # Build Configuration - Update these as needed
+  # ===========================================
+  # NNG Version
+  NNG_VERSION: 'v1.11'
+
+  # Android NDK Version
+  # See: https://developer.android.com/ndk/downloads
+  ANDROID_NDK_VERSION: 'r28c'
+
+  # Android Minimum API Level
+  # Android 5.0 = 21, Android 7.0 = 24, Android 8.0 = 26
+  ANDROID_MIN_SDK: '23'
+
+  # CMake Version (should match Android SDK CMake)
+  CMAKE_VERSION: '3.31.5'
+
+  # Java Version for Android builds
+  JAVA_VERSION: '17'
+
+  # Android STL
+  ANDROID_STL: 'c++_shared'
+
+jobs:
+  build-android-shared:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        android_abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+
+    steps:
+    - name: Checkout NNG repository
+      uses: actions/checkout@v4
+      with:
+        repository: nanomsg/nng
+        ref: ${{ github.event.inputs.version_tag || env.NNG_VERSION }}
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+        add-to-path: false
+
+    - name: Setup CMake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: ${{ env.CMAKE_VERSION }}
+
+    - name: Cache CMake build
+      uses: actions/cache@v4
+      with:
+        path: android-build-${{ matrix.android_abi }}
+        key: ${{ runner.os }}-cmake-shared-${{ matrix.android_abi }}-${{ hashFiles('CMakeLists.txt', 'src/**/*.c', 'src/**/*.h') }}
+        restore-keys: |
+          ${{ runner.os }}-cmake-shared-${{ matrix.android_abi }}-
+
+    - name: Configure build environment
+      run: |
+        echo "NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
+        echo "CMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+
+    - name: Create build directory
+      run: |
+        mkdir -p android-build-${{ matrix.android_abi }}
+        cd android-build-${{ matrix.android_abi }}
+
+    - name: Configure CMake for Android (Shared Library)
+      run: |
+        cd android-build-${{ matrix.android_abi }}
+        # Build NNG as shared library (.so)
+        # This creates libnng.so with pure NNG C API (no JNI)
+        # Can be used directly by Unity via P/Invoke
+        # See: docs/PROJECT_ARTIFACTS_DESIGN.md
+        cmake \
+          -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE \
+          -DANDROID_ABI=${{ matrix.android_abi }} \
+          -DANDROID_PLATFORM=android-${{ env.ANDROID_MIN_SDK }} \
+          -DANDROID_STL=${{ env.ANDROID_STL }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DNNG_TESTS=OFF \
+          -DNNG_TOOLS=OFF \
+          -DNNG_ENABLE_STATS=OFF \
+          -DBUILD_SHARED_LIBS=ON \
+          ..
+
+    - name: Build NNG
+      run: |
+        cd android-build-${{ matrix.android_abi }}
+        cmake --build . --config Release --parallel $(nproc)
+
+    - name: Verify build output
+      run: |
+        cd android-build-${{ matrix.android_abi }}
+        ls -la
+        find . -name "*.so" -type f
+        if [ ! -f "libnng.so" ]; then
+          echo "Error: libnng.so not found!"
+          exit 1
+        fi
+        file libnng.so
+        # List exported symbols
+        readelf -sW libnng.so | grep -E "nng_pair|nng_send|nng_recv|nng_listen|nng_dial" | head -20
+
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts/${{ matrix.android_abi }}
+        cp android-build-${{ matrix.android_abi }}/libnng.so artifacts/${{ matrix.android_abi }}/
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libnng-shared-android-${{ matrix.android_abi }}${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
+        path: artifacts/${{ matrix.android_abi }}/libnng.so
+        retention-days: 30
+
+  package-artifacts:
+    needs: build-android-shared
+    runs-on: ubuntu-latest
+    if: always() && (needs.build-android-shared.result == 'success')
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: all-artifacts
+
+    - name: Package all Android builds
+      run: |
+        mkdir -p libnng-shared-android-all
+        for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+          # Handle version tag in artifact name
+          artifact_name="libnng-shared-android-$abi"
+          if [ -n "${{ github.event.inputs.version_tag }}" ]; then
+            artifact_name="libnng-shared-android-$abi-${{ github.event.inputs.version_tag }}"
+          fi
+          
+          if [ -d "all-artifacts/$artifact_name" ]; then
+            mkdir -p "libnng-shared-android-all/$abi"
+            cp "all-artifacts/$artifact_name/libnng.so" "libnng-shared-android-all/$abi/"
+          fi
+        done
+        
+        # Create a simple README
+        cat > libnng-shared-android-all/README.md << EOF
+        # NNG Android Shared Libraries (Pure NNG, No JNI)
+        
+        This package contains NNG shared libraries built for Android.
+        These are pure NNG libraries without JNI wrapper.
+        
+        ## Use Cases
+        
+        ### Unity (C# P/Invoke)
+        Place libnng.so in Assets/Plugins/Android/libs/<arch>/ and use P/Invoke:
+        \`\`\`csharp
+        [DllImport("nng")]
+        public static extern int nng_pair0_open(out IntPtr socket);
+        \`\`\`
+        
+        ### Android Java (with JNI wrapper)
+        Use libnng.so together with libnng_jni.so (built separately).
+        
+        ## Architecture Support
+        - arm64-v8a: 64-bit ARM (recommended for modern devices)
+        - armeabi-v7a: 32-bit ARM (legacy devices)
+        - x86_64: 64-bit x86 (emulators)
+        - x86: 32-bit x86 (legacy emulators)
+        
+        ## Build Information
+        - Built with Android NDK r25c
+        - Target API Level: 21 (Android 5.0)
+        - STL: c++_shared
+        - Build Type: Release
+        - Version: ${{ github.event.inputs.version_tag || 'latest' }}
+        
+        Generated on: $(date)
+        Commit: ${{ github.sha }}
+        EOF
+        
+        # Create package name with version if specified
+        package_name="libnng-shared-android-all"
+        if [ -n "${{ github.event.inputs.version_tag }}" ]; then
+          package_name="libnng-shared-android-all-${{ github.event.inputs.version_tag }}"
+        fi
+        tar -czf "$package_name.tar.gz" libnng-shared-android-all/
+
+    - name: Upload combined package
+      uses: actions/upload-artifact@v4
+      with:
+        name: libnng-shared-android-all-architectures${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
+        path: |
+          libnng-shared-android-all*.tar.gz
+          libnng-shared-android-all/
+        retention-days: 90
