@@ -440,7 +440,7 @@ JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngSocketSendAio
         return;
     }
     
-    nng_socket_send(socket, aio);
+    nng_sock_send(socket, aio);
     LOGI("nng_socket_send_aio initiated");
 }
 
@@ -454,7 +454,7 @@ JNIEXPORT void JNICALL Java_com_nng_android_NngWrapper_nngSocketRecvAio
         return;
     }
     
-    nng_socket_recv(socket, aio);
+    nng_sock_recv(socket, aio);
     LOGI("nng_socket_recv_aio initiated");
 }
 
