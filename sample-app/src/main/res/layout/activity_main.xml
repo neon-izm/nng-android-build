@@ -17,7 +17,26 @@
             android:textSize="24sp"
             android:textStyle="bold"
             android:gravity="center"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Test send/receive on single device"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:layout_marginBottom="24dp"
+            android:textColor="@android:color/darker_gray" />
+
+        <Button
+            android:id="@+id/setupLocalTestButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🚀 Setup Local Test"
+            android:textSize="16sp"
+            android:layout_marginBottom="24dp"
+            android:backgroundTint="@android:color/holo_green_dark"
+            android:textColor="@android:color/white" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -71,6 +90,17 @@
 
         </com.google.android.material.textfield.TextInputLayout>
 
+        <Button
+            android:id="@+id/sendToSelfButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📤 Send to Self (Auto-receive)"
+            android:textSize="16sp"
+            android:layout_marginBottom="16dp"
+            android:backgroundTint="@android:color/holo_blue_dark"
+            android:textColor="@android:color/white"
+            android:enabled="false" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -117,16 +147,31 @@
             android:textColor="@android:color/white" />
 
         <TextView
-            android:id="@+id/receivedTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="14sp"
-            android:minHeight="100dp"
-            android:padding="12dp"
+            android:text="📨 Received Messages:"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
             android:background="@android:color/background_light"
-            android:hint="Received messages will appear here..."
-            android:gravity="top" />
+            android:padding="4dp">
+
+            <TextView
+                android:id="@+id/receivedTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="12sp"
+                android:padding="8dp"
+                android:hint="Received messages will appear here...\nUse 'Send to Self' to test!"
+                android:gravity="top"
+                android:fontFamily="monospace" />
+
+        </ScrollView>
 
     </LinearLayout>
 

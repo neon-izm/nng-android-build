@@ -269,13 +269,6 @@ jobs:
         cp android-build-${{ matrix.android_abi }}/libnng.so complete-artifacts/${{ matrix.android_abi }}/
         cp jni-build/libs/${{ matrix.android_abi }}/libnng_jni.so complete-artifacts/${{ matrix.android_abi }}/
 
-    - name: Upload complete libraries (shared + JNI)
-      uses: actions/upload-artifact@v4
-      with:
-        name: libnng-complete-android-${{ matrix.android_abi }}${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
-        path: complete-artifacts/${{ matrix.android_abi }}/
-        retention-days: 30
-
     - name: Upload temp complete libraries for packaging
       uses: actions/upload-artifact@v4
       with:
@@ -289,7 +282,7 @@ jobs:
     if: always() && (needs.build-android-shared.result == 'success')
 
     steps:
-    - name: Download temp complete artifacts for packaging
+    - name: Download all architecture artifacts for packaging
       uses: actions/download-artifact@v4
       with:
         pattern: temp-complete-*
@@ -403,6 +396,12 @@ jobs:
           libnng-android-complete*.tar.gz
           libnng-android-complete/
         retention-days: 90
+
+    - name: Clean up temp artifacts
+      uses: geekyeggo/delete-artifact@v5
+      with:
+        name: temp-complete-*
+        failOnError: false
 
   build-aar:
     needs: build-android-shared
@@ -580,11 +579,8 @@ jobs:
         path: android-library/build/outputs/aar/android-library-release.aar
         retention-days: 90
 
-    - name: Upload AAR with sources and javadoc
-      uses: actions/upload-artifact@v4
+    - name: Clean up temp artifacts (if not already cleaned)
+      uses: geekyeggo/delete-artifact@v5
       with:
-        name: nng-android-library-complete${{ github.event.inputs.version_tag && format('-{0}', github.event.inputs.version_tag) || '' }}
-        path: |
-          android-library/build/outputs/aar/
-          android-library/build/libs/
-        retention-days: 90
+        name: temp-complete-*
+        failOnError: false
